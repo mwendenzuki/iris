@@ -1,15 +1,17 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import './index.css'
-import App from './App.tsx'
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import Onboarding from "./pages/Onboarding";
+import Navigate from "./pages/Navigate";
+import "./index.css";
 
-// Service worker only in production builds, so it doesn't fight Vite's dev server.
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  navigator.serviceWorker.register('/sw.js').catch(() => {})
-}
-
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Onboarding />} />
+        <Route path="/navigate" element={<Navigate />} />
+      </Routes>
+    </BrowserRouter>
+  </React.StrictMode>,
+);
