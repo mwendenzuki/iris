@@ -18,6 +18,9 @@ export function RunScreen({ settings, position, onEnd }: Props) {
     text: "Starting…",
   });
   const [status, setStatus] = useState("");
+  const [calDistance, setCalDistance] = useState("");
+  const [calHeight, setCalHeight] = useState("");
+  const [calResult, setCalResult] = useState("");
 
   useEffect(() => {
     const guide = new Guide(settings, position, {
