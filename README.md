@@ -1,75 +1,73 @@
-# React + TypeScript + Vite
+# Iris
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A mobile-first web app that helps visually impaired people walk safely. Iris uses the phone camera to spot obstacles and GPS to give spoken, step-by-step directions, all hands-free.
 
-Currently, two official plugins are available:
+> Built in 24 hours at [Hackathon name]. Iris is an assistive aid. It does not replace a white cane or guide dog.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## What it does
 
-## React Compiler
+- **Obstacle detection:** the rear camera runs an on-device model and warns you about things in your path, with direction ("obstacle ahead, left").
+- **Step-by-step navigation:** pick a start and end point and Iris reads out walking directions, converted into steps based on your stride length.
+- **Voice first:** everything important is spoken, so you don't need to look at the screen.
+- **Personal setup:** choose your language and enter your height once. Iris uses it to estimate your stride length (`height × 0.415`).
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## How it works
 
-## Expanding the ESLint configuration
+1. **Onboarding:** choose a language, enter your height, tap OK.
+2. **Main page:** enter a start point (or use your current location) and an end point.
+3. **Start:** the camera turns on, navigation begins, and obstacle warnings take priority over directions.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Tech stack
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- Vite + React + TypeScript
+- Tailwind CSS, React Router
+- TensorFlow.js (COCO-SSD) for obstacle detection
+- Geolocation API for live position
+- Mapbox Directions + Geocoding for routes and places
+- Web Speech API for voice, Web Audio for alert tones
+- Screen Wake Lock API to keep the screen on
+- Deployed as a PWA on Vercel / Netlify
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## Getting started
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```bash
+git clone <repo-url>
+cd iris
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Create a `.env` file:
 
 ```
+VITE_MAPBOX_TOKEN=your_token_here
+```
+
+Run it:
+
+```bash
+npm run dev
+```
+
+Camera and GPS only work over HTTPS (localhost is fine for desktop). To test on your phone, use the deployed URL or a tunnel like ngrok.
+
+## Known limitations
+
+- The screen must stay on while navigating.
+- iOS Safari has no vibration support, so Iris uses audio tones for alerts.
+- Distance to obstacles is estimated from bounding box size, not real depth sensing.
+- Available voices (especially Swahili) depend on the device.
+
+## Roadmap
+
+- Voice input for destinations
+- More languages
+- Background navigation in a native app
+- Integration with wearable hardware
+
+## Team
+
+[Add names here]
+
+## License
+
+[Add license here]
