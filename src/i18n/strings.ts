@@ -70,12 +70,14 @@ export type Risk = 1 | 2 | 3
 export interface ObjectInfo {
   /** typical real-world height in metres, used for size-based distance */
   height: number
+  /** stands on the ground (bottom of its box = ground contact), so ground-plane distance works */
+  ground: boolean
   risk: Risk
   en: string
   sw: string
 }
 
-const o = (height: number, risk: Risk, en: string, sw: string): ObjectInfo => ({ height, risk, en, sw })
+const o = (height: number, risk: Risk, en: string, sw: string, ground = true): ObjectInfo => ({ height, ground, risk, en, sw })
 
 /** COCO-SSD classes Iris cares about, plus 'obstacle' for depth-only hits. */
 export const OBJECTS: Record<string, ObjectInfo> = {
@@ -96,7 +98,20 @@ export const OBJECTS: Record<string, ObjectInfo> = {
   suitcase: o(0.6, 1, 'Suitcase', 'Sanduku'),
   'fire hydrant': o(0.7, 1, 'Hydrant', 'Bomba la maji'),
   'potted plant': o(0.5, 1, 'Plant', 'Mmea'),
-  obstacle: o(0, 1, 'Obstacle', 'Kizuizi'),
+  train: o(3.5, 3, 'Train', 'Treni'),
+  'traffic light': o(0.9, 1, 'Traffic light', 'Taa za barabarani', false),
+  'stop sign': o(0.75, 1, 'Stop sign', 'Ishara ya kusimama', false),
+  'parking meter': o(1.3, 1, 'Parking meter', 'Mita ya maegesho'),
+  cat: o(0.3, 1, 'Cat', 'Paka'),
+  bird: o(0.25, 1, 'Bird', 'Ndege', false),
+  backpack: o(0.5, 1, 'Bag', 'Mkoba', false),
+  handbag: o(0.3, 1, 'Handbag', 'Mkoba wa mkono', false),
+  umbrella: o(1.0, 1, 'Umbrella', 'Mwavuli', false),
+  skateboard: o(0.15, 1, 'Skateboard', 'Ubao wa kuteleza'),
+  'sports ball': o(0.22, 1, 'Ball', 'Mpira'),
+  bottle: o(0.25, 1, 'Bottle', 'Chupa'),
+  refrigerator: o(1.7, 1, 'Fridge', 'Friji'),
+  obstacle: o(0, 1, 'Obstacle', 'Kizuizi', false),
 }
 
 export const objectName = (cls: string, lang: Lang): string => OBJECTS[cls][lang]

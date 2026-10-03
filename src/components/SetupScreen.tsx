@@ -26,11 +26,13 @@ export function SetupScreen({ initial, location, onStart }: Props) {
   const [destination, setDestination] = useState(initial.destination)
   const [voiceStatus, setVoiceStatus] = useState('')
   const [voiceBusy, setVoiceBusy] = useState(false)
+  const [calibrate, setCalibrate] = useState(!!initial.calibrate)
 
   const settings = (h = height, l = lang, d = destination): GuideSettings => ({
     lang: l,
     heightCm: +h || 165,
     destination: d,
+    calibrate,
   })
 
   async function voiceSetup() {
@@ -104,6 +106,11 @@ export function SetupScreen({ initial, location, onStart }: Props) {
       <button type="button" onClick={() => onStart(settings())}>
         Start walking
       </button>
+      <label className="check">
+        <input type="checkbox" checked={calibrate} onChange={(e) => setCalibrate(e.target.checked)} />
+        Distance calibration tools (for a sighted helper)
+      </label>
+
       <p className="note">
         Iris supports your cane or guide dog. It does not replace them. Hold the phone upright at chest height, camera facing forward.
       </p>

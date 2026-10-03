@@ -71,3 +71,19 @@ export function watchHeading(onHeading: (h: number) => void): () => void {
     removeEventListener('deviceorientation', handler, true)
   }
 }
+
+/**
+ * Watch how far the phone's camera is tilted down from horizontal, in degrees
+ * (0 = level, positive = pointing at the ground). Portrait use only; never fires
+ * on devices without an orientation sensor (e.g. laptops).
+ */
+export function watchPitch(onPitch: (deg: number) => void): () => void {
+  const handler = (ev: Event) => {
+    const e = ev as DeviceOrientationEvent
+    if (e.beta == null) return
+    // beta = 90 when the phone is upright; less when the top tilts away (camera looks down)
+    onPitch(Math.max(-30, Math.min(70, 90 - e.beta)))
+  }
+  addEventListener('deviceorientation', handler, true)
+  return () => removeEventListener('deviceorientation', handler, true)
+}

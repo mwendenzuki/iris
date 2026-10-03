@@ -159,3 +159,58 @@ button:disabled {
   padding: 18px 6px;
   font-size: 20px;
 }
+
+/* ---------- distance calibration (helper tools) ---------- */
+
+label.check {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 400;
+  font-size: 16px;
+  margin-top: 22px;
+}
+
+label.check input {
+  width: 24px;
+  height: 24px;
+}
+
+.calibrate {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(132px + env(safe-area-inset-bottom));
+  padding: 10px 14px;
+  background: rgba(20, 18, 58, 0.9);
+  font-size: 14px;
+}
+
+.calibrate p {
+  margin: 0 0 8px;
+}
+
+.calibrate .row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.calibrate label {
+  margin: 0;
+  font-size: 13px;
+  flex: 1;
+}
+
+.calibrate input {
+  padding: 8px;
+  font-size: 16px;
+  border-width: 2px;
+}
+
+.calibrate button {
+  margin: 0;
+  width: auto;
+  padding: 10px 14px;
+  font-size: 16px;
+}

@@ -1,5 +1,6 @@
 import { rad } from '../geo/geo'
 import type { Risk } from '../i18n/strings'
+import type { DistanceEstimate } from './distance'
 
 /** [x, y, width, height] in video pixels */
 export type Box = [number, number, number, number]
@@ -19,10 +20,12 @@ export interface Item {
   cy: number
   /** fused distance estimate, metres */
   d: number
-  /** size-based distance estimate, metres */
+  /** geometric (size + ground) distance estimate, metres; used to calibrate the depth model */
   ds: number
-  /** box touches the bottom of the frame (object partly out of view) */
+  /** box touches the top or bottom of the frame (object partly out of view) */
   trunc: boolean
+  /** the individual distance estimates, for debugging / calibration */
+  est?: DistanceEstimate
   score: number
   risk: Risk
   box: Box
@@ -38,5 +41,33 @@ export interface Item {
   tier: Tier
 }
 
-/** Focal length in pixels, assuming ~60° vertical field of view. */
-export const focalPx = (H: number): number => H / (2 * Math.tan(rad(30)))
+// ---------- camera focal length ----------
+// Default assumes a ~60° vertical field of view (typical phone main camera in portrait).
+// Each device can be calibrated once (see Guide.calibrate); the result is saved per browser.
+
+const FOCAL_KEY = 'iris.focalScale'
+
+function readScale(): number {
+  try {
+    const v = parseFloat(localStorage.getItem(FOCAL_KEY) ?? '')
+    return v > 0.3 && v < 4 ? v : 1
+  } catch {
+    return 1
+  }
+}
+
+let focalScale = readScale()
+
+/** Focal length in pixels for a frame `H` pixels tall. */
+export const focalPx = (H: number): number => (focalScale * H) / (2 * Math.tan(rad(30)))
+
+export const getFocalScale = (): number => focalScale
+
+export function setFocalScale(s: number): void {
+  focalScale = s
+  try {
+    localStorage.setItem(FOCAL_KEY, String(s))
+  } catch {
+    /* storage unavailable: applies for this session only */
+  }
+}

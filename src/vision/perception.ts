@@ -1,5 +1,6 @@
 import { OBJECTS } from '../i18n/strings'
 import type { DepthEstimator } from './depth'
+import { estimateDistance, type CameraPose } from './distance'
 import { focalPx, type Item, type Prediction } from './types'
 
 interface Track {
@@ -27,7 +28,7 @@ export class Perception {
   private tracks: Track[] = []
   private nid = 0
 
-  perceive(preds: Prediction[], t: number, W: number, H: number, depth: DepthEstimator): Item[] {
+  perceive(preds: Prediction[], t: number, W: number, H: number, depth: DepthEstimator, pose: CameraPose): Item[] {
     const f = focalPx(H)
     let items: Item[] = []
 
@@ -35,11 +36,11 @@ export class Perception {
       const o = OBJECTS[p.class]
       if (!o || p.score < (o.risk === 3 || p.class === 'person' ? 0.5 : 0.55)) continue
       const [x, y, w, h] = p.bbox
-      const trunc = y + h > H - 6
-      const ds = Math.min(30, Math.max(0.4, ((o.height * f) / h) * (trunc ? 0.8 : 1)))
-      const dd = depth.depthAt(p.bbox, W, H)
-      const d = dd ? (trunc ? dd : 0.6 * dd + 0.4 * ds) : ds
-      items.push(this.item(p.class, x + w / 2, y + h / 2, d, ds, trunc, p.score, o.risk, p.bbox, (w / f) * d, ((x + w / 2 - W / 2) / f) * d))
+      const est = estimateDistance(p.class, o, p.bbox, W, H, pose, depth.depthAt(p.bbox, W, H))
+      const d = est.fused
+      const it = this.item(p.class, x + w / 2, y + h / 2, d, est.geometric, est.cutTop || est.cutBottom, p.score, o.risk, p.bbox, (w / f) * d, ((x + w / 2 - W / 2) / f) * d)
+      it.est = est
+      items.push(it)
     }
 
     // unnamed obstacles from the depth scan (fresh within 1.5 s)
