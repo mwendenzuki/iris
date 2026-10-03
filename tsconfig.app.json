@@ -22,5 +22,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["project/src", "project/src/pages"]
+  "include": ["src", "src/pages"]
 }
