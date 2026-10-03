@@ -1,11 +1,18 @@
 {
-  "name": "Iris",
-  "short_name": "Iris",
+  "name": "IRIS",
+  "short_name": "IRIS",
   "description": "AI walking guide for people who are blind or have low vision",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#14123A",
-  "theme_color": "#14123A",
-  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+  "background_color": "#15125c",
+  "theme_color": "#15125c",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }
