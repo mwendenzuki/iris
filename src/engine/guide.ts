@@ -1,8 +1,8 @@
-import { listen } from '../audio/listen'
+import { listen, micUnavailable } from '../audio/listen'
 import { beep, Speaker, type Priority } from '../audio/speaker'
 import { watchHeading, watchPitch, watchPosition, type LatLng } from '../geo/geo'
 import { objectName, stepsText, TX, type Lang, type Strings } from '../i18n/strings'
-import { fetchRoute, RouteGuide } from '../nav/route'
+import { fetchRoute, findPlace, RouteGuide, tripSummary, walkMinutes, type Route } from '../nav/route'
 import { DepthEstimator } from '../vision/depth'
 import type { Detector } from '../vision/detector'
 import { GeminiEyes, type GeminiHazard } from '../vision/gemini'
@@ -35,6 +35,12 @@ const GEMINI_RANGE = 6
 const GEMINI_LABEL_TTL = 6
 
 type Side = 'left' | 'ahead' | 'right'
+/** Seconds between repeated route instructions. */
+const ROUTE_INTERVAL = 10
+/** Stop this far (metres) short of an obstacle before side-stepping. */
+const STOP_SHORT = 1.0
+
+const YES = /\b(yes|yeah|yep|ok|okay|sure|go|correct)\b|ndiyo|ndio|sawa|naam/
 const TIER_COLOURS = ['#FF5A4E', '#FFD23F', '#3DDBC0', '#3DDBC0']
 
 /**
@@ -64,6 +70,8 @@ export class Guide {
   private lastRoute = 0
   private lastGemini = 0
   private lastIdentify = 0
+  /** a voice conversation is in progress: hold back route/scene chatter */
+  private dialog = false
 
   private speaker: Speaker
   private perception = new Perception()
@@ -115,13 +123,26 @@ export class Guide {
     }
     if (this.stopped) return
 
+    // Trip briefing: "Ready. Walk forward. Route to X: 850 metres, about 1200 steps, roughly 16 minutes."
+    const T = this.T
+    let intro = T.ready
     const dest = this.settings.destination.trim()
-    if (dest && this.pos) this.route.set(await fetchRoute(this.pos, dest))
+    if (dest) {
+      const r = this.pos ? await this.plan(dest) : T.noGps
+      if (typeof r === 'string') intro += ' ' + r
+      else {
+        this.route.set(r)
+        intro += ' ' + T.routeTo(r.place.name, tripSummary(r.distance, this.stride, T))
+      }
+    }
+    if (this.stopped) return
     this.cleanups.push(watchPosition((p) => (this.pos = p)))
 
     this.running = true
     this.speaker.lastSpeak = 0
-    this.speaker.say(2, 'ready', this.T.ready, now(), true)
+    // Protected: obstacle warnings wait until the briefing is finished (a real "Stop" still cuts in)
+    void this.speaker.announce(intro).then(() => (this.lastRoute = now() - ROUTE_INTERVAL + 2))
+    this.lastRoute = now() + 60 // no turn instruction until the briefing is done
     this.loop()
     this.depth.load()
   }
@@ -170,34 +191,96 @@ export class Guide {
     this.speaker.say(2, 'scene', `${T.scene}: ${list}. ${tail}`, t, !auto)
   }
 
-  /** Listen for a voice command: "go to …", "stop", "repeat", anything else = describe. */
+  /**
+   * Voice commands (English or Kiswahili):
+   *   "change destination" -> asks where -> searches -> confirms distance/time -> yes/no
+   *   "go to <place>"      -> same, skipping the question
+   *   "how far" / "how long", "cancel route", "repeat", "help", "stop", anything else = describe
+   */
   async command(): Promise<void> {
     const T = this.T
     this.speaker.interrupt()
-    const s = ((await listen(T.lang)) ?? '').toLowerCase()
-    if (!s) {
-      this.speaker.say(1, 'cmd', T.miss, now(), true)
-      return
-    }
-    const m = s.match(/(?:go to|take me to|navigate to|nipeleke|nenda)\s+(.+)/)
-    if (m) {
-      let ok = false
-      if (this.pos) {
-        const steps = await fetchRoute(this.pos, m[1])
-        if (steps) {
-          this.route.set(steps)
-          ok = true
-        }
+    this.dialog = true
+    try {
+      const s = await this.hear()
+      if (!s) return this.reply(micUnavailable() ? T.noMic : T.miss)
+      if (/cancel|stop (the )?(navigation|route|directions)|sitisha|ghairi/.test(s)) {
+        this.route.set(null)
+        return this.reply(T.routeCleared)
       }
-      this.speaker.say(1, 'cmd', ok ? T.rok : T.rno, now(), true)
-      return
-    }
-    if (/stop|quit|end|simamisha|maliza/.test(s)) return this.cb.onStopRequested()
-    if (/repeat|again|rudia/.test(s)) {
-      this.speaker.say(1, 'cmd', this.speaker.lastText, now(), true)
-      return
+      if (/\b(stop|quit|end|exit)\b|simamisha|simama|maliza/.test(s)) return this.cb.onStopRequested()
+      if (/repeat|again|rudia/.test(s)) return this.reply(this.speaker.lastText)
+      if (/help|what can i say|msaada|nisaidie/.test(s)) return this.reply(T.help)
+      if (/how far|how long|distance|time left|remaining|umbali|muda|zimebaki/.test(s)) return this.reply(this.remainingText())
+
+      const direct = s.match(/(?:go to|take me to|navigate to|directions to|nipeleke|nenda|niongoze hadi)\s+(.+)/)
+      if (direct) return await this.changeDestination(direct[1])
+      if (/destination|change|new place|somewhere else|another place|badilisha|mahali|safari mpya|sehemu nyingine/.test(s)) {
+        const q = await this.askFor(T.askDest)
+        if (!q) return this.reply(micUnavailable() ? T.noMic : T.miss)
+        return await this.changeDestination(q)
+      }
+    } finally {
+      this.dialog = false
     }
     this.describe(false)
+  }
+
+  /** Search -> read back distance and time -> set the route only if the user says yes. */
+  private async changeDestination(query: string): Promise<void> {
+    const T = this.T
+    if (!this.pos) return this.reply(T.noGps)
+    // Say "Searching" while the lookup runs, so there's no silent gap
+    const [, r] = await Promise.all([this.speaker.announce(T.searching), this.plan(query)])
+    if (typeof r === 'string') return this.reply(r)
+    const summary = tripSummary(r.distance, this.stride, T)
+    const answer = await this.askFor(T.found(r.place.name, summary), T.yesNo)
+    if (!YES.test(answer)) return this.reply(T.keepRoute)
+    this.route.set(r)
+    this.lastRoute = now()
+    this.reply(T.routeTo(r.place.name, summary))
+  }
+
+  /** Find a place and a walking route to it; returns an error message to speak on failure. */
+  private async plan(query: string): Promise<Route | string> {
+    const pos = this.pos
+    if (!pos) return this.T.noGps
+    const place = await findPlace(query, pos)
+    if (!place) return this.T.rno
+    return (await fetchRoute(pos, place)) ?? this.T.noWalkRoute
+  }
+
+  private remainingText(): string {
+    const left = this.route.remaining(this.pos)
+    const r = this.route.route
+    if (left == null || !r) return this.T.noRoute
+    return this.T.remainingMsg(r.place.name, this.T.distance(left), walkMinutes(left))
+  }
+
+  /** Spoken answer to a voice command; protected so an obstacle warning doesn't cut it off. */
+  private reply(text: string): void {
+    void this.speaker.announce(text)
+  }
+
+  /**
+   * Ask a question and listen for the answer. If nothing was heard (the user needed a
+   * moment), apologise and ask once more, using the shorter `retry` prompt if given.
+   */
+  private async askFor(question: string, retry = question): Promise<string> {
+    await this.speaker.announce(question)
+    let answer = await this.hear()
+    if (!answer && !micUnavailable()) {
+      await this.speaker.announce(`${this.T.miss} ${retry}`)
+      answer = await this.hear()
+    }
+    return answer
+  }
+
+  /** Wait for Iris to stop talking (so the mic doesn't hear her), then listen once. */
+  private async hear(): Promise<string> {
+    await this.speaker.idle()
+    this.cb.onMessage(this.T.listening)
+    return ((await listen(this.T.lang)) ?? '').toLowerCase().trim()
   }
 
   /**
@@ -250,19 +333,26 @@ export class Guide {
   private decide(items: Item[], t: number): void {
     const T = this.T
     const top = items[0]
+    // While Iris is asking or listening, stay quiet so the mic hears the user, not Iris.
+    // Only a real "Stop" (something very close, or a vehicle) may interrupt.
+    if (this.dialog && top?.tier !== 0) return
     if (top && top.cls === 'obstacle' && top.tier <= 1) this.identifyObstacle(top, t)
     if (top?.tier === 0) {
       this.lastHaz = t
-      this.speaker.say(0, '0' + top.cls + this.side(top.lat), `${T.stop}. ${this.name(top)}, ${this.side(top.lat)}.`, t)
+      // Vehicles: just stop. Never tell someone to step sideways into traffic.
+      const what = `${T.stop}. ${this.name(top)} ${this.side(top.lat)}.`
+      this.speaker.say(0, '0' + top.cls + this.side(top.lat), top.risk === 3 ? what : `${what} ${this.avoid(top, true)}`, t)
       return
     }
     if (top?.tier === 1) {
       this.lastHaz = t
-      this.speaker.say(1, '1' + top.cls + this.side(top.lat), `${this.name(top)} ${this.side(top.lat)}, ${this.steps(top.d)}. ${this.avoid(top)}.`, t)
+      // "Chair ahead, 3 steps away. Walk 2 steps forward, then step 2 steps to your right, then continue."
+      const what = `${this.name(top)} ${this.side(top.lat)}, ${T.away(this.steps(top.d))}.`
+      this.speaker.say(1, '1' + top.cls + this.side(top.lat), top.risk === 3 ? what : `${what} ${this.avoid(top)}`, t)
       return
     }
-    if (t - this.lastHaz > 3 && t - this.lastRoute > 8) {
-      const r = this.route.message(this.pos, this.heading, this.stride, T)
+    if (t - this.lastHaz > 3 && t - this.lastRoute > ROUTE_INTERVAL) {
+      const r = this.route.progress(this.pos, this.stride, T) ?? this.route.message(this.pos, this.heading, this.stride, T)
       if (r) {
         this.lastRoute = t
         this.speaker.say(2, 'route', r, t)
@@ -275,7 +365,7 @@ export class Guide {
   /** Background Gemini check for hazards the detector can't name. Never blocks the loop. */
   private checkGemini(t: number): void {
     const g = this.gemini
-    if (!g.available || g.busy || !this.video) return
+    if (this.dialog || !g.available || g.busy || !this.video) return
     if (t - this.lastGemini < GEMINI_INTERVAL || t - this.lastHaz < 2) return
     this.lastGemini = t
     this.askHazards((hazards) => {
@@ -312,7 +402,7 @@ export class Guide {
     g.busy = true
     g.ask(this.video!, 'hazards', this.settings.lang, this.stride, 6000)
       .then((r) => {
-        if (r && this.running) onResult(r.hazards)
+        if (r && this.running && !this.dialog) onResult(r.hazards)
       })
       .finally(() => (g.busy = false))
   }
@@ -332,7 +422,7 @@ export class Guide {
   private geminiText(h: GeminiHazard): string {
     const T = this.T
     const side = h.side === 'left' ? T.left : h.side === 'right' ? T.right : T.ahead
-    return `${h.label}, ${side}, ${this.steps(h.distance_m)}.`
+    return `${h.label} ${side}, ${T.away(this.steps(h.distance_m))}.`
   }
 
   private draw(items: Item[]): void {
@@ -380,11 +470,17 @@ export class Guide {
   }
 
   /** "Move left 2 steps" — sidestep toward whichever side needs fewer steps. */
-  private avoid(it: Item): string {
+  /**
+   * Avoidance as a sequence: walk forward until about 1 m short, then side-step to
+   * whichever side needs fewer steps, then carry on. `now` = skip the forward part.
+   */
+  private avoid(it: Item, now = false): string {
+    const T = this.T
     const toLeft = it.lat + it.ow / 2 + 0.7
     const toRight = it.ow / 2 + 0.7 - it.lat
     const goLeft = toLeft <= toRight
-    const k = Math.min(4, Math.max(1, Math.ceil(Math.max(0, goLeft ? toLeft : toRight) / this.stride)))
-    return `${this.T.move} ${goLeft ? this.T.left : this.T.right} ${stepsText(k, this.T)}`
+    const side = Math.min(4, Math.max(1, Math.ceil(Math.max(0, goLeft ? toLeft : toRight) / this.stride)))
+    const fwd = now ? 0 : Math.round((it.d - STOP_SHORT) / this.stride)
+    return T.avoid(fwd > 0 ? stepsText(fwd, T) : null, stepsText(side, T), goLeft ? T.left : T.right)
   }
 }

@@ -15,7 +15,31 @@ A mobile-first web app that helps visually impaired people walk safely. Iris use
 
 1. **Setup:** tap "Set up by voice" (Iris asks language → height → destination), or fill in the form and tap "Start walking".
 2. **Walking:** the camera turns on and Iris speaks. Hazards always take priority over directions; when it's quiet, it gives the next route instruction or a short scene description.
-3. **Buttons:** "What's ahead?" describes the scene, "Voice" takes a command ("go to …", "repeat", "stop"), "Stop" ends the walk.
+3. **Buttons:** "What's ahead?" describes the scene, "Voice" takes a command (see below), "Stop" ends the walk.
+
+## What Iris says
+
+**Obstacles**: what, where, then what to do, as a sequence:
+- "Chair ahead, 4 steps away. Walk 2 steps forward, then step 2 steps to your right, then continue."
+- "Stop. Person ahead. Step 2 steps to your left, then continue."
+- Vehicles only ever get "Stop. Car ahead." (never told to step sideways into traffic).
+
+**Trip briefing**: when a route is set: "Route to KICC: 850 metres, about 1200 steps, roughly 16 minutes."
+Then turn-by-turn ("Walk about 310 metres, then turn left" / "Walk 10 steps, then turn left"),
+"You are halfway…", "Almost there…", "You have arrived at KICC." Time assumes ~0.9 m/s (cane walking pace).
+
+**Voice commands** (tap Voice, then speak; English or Kiswahili):
+
+| Say | Iris does |
+|---|---|
+| "change destination" / "badilisha mahali" | asks where, searches, reads back distance + time, waits for yes/no |
+| "take me to KICC" / "nipeleke KICC" | same, without the question |
+| "how far?" / "umbali gani?" | distance and minutes left |
+| "cancel route" / "sitisha safari" | stops directions, keeps obstacle alerts |
+| "repeat" / "rudia" | repeats the last message |
+| "help" / "msaada" | lists the commands |
+| "stop" / "simama" | ends the walk |
+| anything else | describes what's ahead |
 
 ## Distance estimation
 

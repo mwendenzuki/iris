@@ -33,6 +33,66 @@ export interface Strings {
   nosr: string
   /** BCP-47 tag used for speech synthesis and recognition */
   lang: string
+
+  // ---- obstacle guidance ----
+  /** "3 steps away" */
+  away: (steps: string) => string
+  /** "Walk 2 steps forward, then step 2 steps to your right, then continue." (fwd null = no forward part) */
+  avoid: (fwd: string | null, side: string, dir: string) => string
+
+  // ---- trip / route ----
+  /** "850 metres" / "2.1 kilometres" */
+  distance: (metres: number) => string
+  /** "850 metres, about 1200 steps, roughly 16 minutes" */
+  trip: (distance: string, steps: number, minutes: number) => string
+  routeTo: (place: string, summary: string) => string
+  halfway: (left: string, minutes: number) => string
+  almost: (steps: string) => string
+  arrived: (place: string) => string
+  walk: (steps: string) => string
+  walkAbout: (steps: string) => string
+  youArrive: string
+  uturn: string
+  keepLeft: string
+  keepRight: string
+  turnLeft: string
+  turnRight: string
+  straightOn: string
+
+  // ---- voice conversation ----
+  remainingMsg: (place: string, left: string, minutes: number) => string
+  askDest: string
+  searching: string
+  found: (place: string, summary: string) => string
+  keepRoute: string
+  routeCleared: string
+  noRoute: string
+  noGps: string
+  noWalkRoute: string
+  noMic: string
+  listening: string
+  yesNo: string
+  help: string
+}
+
+const enDistance = (m: number) => (m < 1000 ? `${Math.max(10, Math.round(m / 10) * 10)} metres` : `${(m / 1000).toFixed(1)} kilometres`)
+const swDistance = (m: number) => (m < 1000 ? `mita ${Math.max(10, Math.round(m / 10) * 10)}` : `kilomita ${(m / 1000).toFixed(1)}`)
+/** 16 -> "16 minutes", 60 -> "1 hour", 85 -> "1 hour and 25 minutes" (over an hour, minutes round to 5) */
+const enDuration = (total: number): string => {
+  if (total < 60) return `${total} minute${total === 1 ? '' : 's'}`
+  const rounded = Math.round(total / 5) * 5
+  const h = Math.floor(rounded / 60)
+  const m = rounded % 60
+  const hours = `${h} hour${h === 1 ? '' : 's'}`
+  return m ? `${hours} and ${m} minutes` : hours
+}
+/** 16 -> "dakika 16", 60 -> "saa 1", 85 -> "saa 1 na dakika 25" */
+const swDuration = (total: number): string => {
+  if (total < 60) return `dakika ${total}`
+  const rounded = Math.round(total / 5) * 5
+  const h = Math.floor(rounded / 60)
+  const m = rounded % 60
+  return m ? `saa ${h} na dakika ${m}` : `saa ${h}`
 }
 
 export const TX: Record<Lang, Strings> = {
@@ -48,6 +108,39 @@ export const TX: Record<Lang, Strings> = {
     rok: 'Route set.', rno: 'Could not find that place.', miss: 'Sorry, I did not catch that.',
     nosr: 'Voice input is not supported on this browser. Please use the form.',
     lang: 'en-US',
+
+    away: (s) => `${s} away`,
+    avoid: (fwd, side, dir) =>
+      fwd ? `Walk ${fwd} forward, then step ${side} to your ${dir}, then continue.` : `Step ${side} to your ${dir}, then continue.`,
+    distance: enDistance,
+    trip: (d, steps, m) => `${d}, about ${steps} steps, roughly ${enDuration(m)}`,
+    routeTo: (p, sum) => `Route to ${p}: ${sum}.`,
+    halfway: (left, m) => `You are halfway. ${left} to go, about ${enDuration(m)}.`,
+    almost: (s) => `Almost there. About ${s} to go.`,
+    arrived: (p) => `You have arrived at ${p}.`,
+    walk: (s) => `Walk ${s}`,
+    walkAbout: (s) => `Walk about ${s}`,
+    youArrive: 'you will arrive',
+    uturn: 'turn around',
+    keepLeft: 'keep left',
+    keepRight: 'keep right',
+    turnLeft: 'turn left',
+    turnRight: 'turn right',
+    straightOn: 'continue straight',
+
+    remainingMsg: (p, left, m) => `${left} to ${p}, about ${enDuration(m)}.`,
+    askDest: 'Where would you like to go?',
+    searching: 'Searching.',
+    found: (p, sum) => `I found ${p}: ${sum}. Say yes to go there, or no to cancel.`,
+    keepRoute: 'Okay, no change.',
+    routeCleared: 'Navigation stopped. I will still warn you about obstacles.',
+    noRoute: 'No destination set. Say change destination to set one.',
+    noGps: 'I do not know where you are yet. Please wait a moment and try again.',
+    noWalkRoute: 'I found the place, but no walking route to it.',
+    listening: 'Listening…',
+    yesNo: 'Please say yes or no.',
+    noMic: 'I cannot use the microphone in this browser. Please use Chrome or Edge, and allow microphone access.',
+    help: 'You can say: change destination, how far, repeat, what is ahead, cancel route, or stop.',
   },
   sw: {
     stop: 'Simama', ahead: 'mbele', left: 'kushoto', right: 'kulia', step: 'hatua', steps: 'hatua',
@@ -61,6 +154,39 @@ export const TX: Record<Lang, Strings> = {
     rok: 'Njia imewekwa.', rno: 'Sikupata mahali hapo.', miss: 'Samahani, sikusikia vizuri.',
     nosr: 'Kivinjari hiki hakisikii sauti. Tumia fomu.',
     lang: 'sw-KE',
+
+    away: (s) => s,
+    avoid: (fwd, side, dir) =>
+      fwd ? `Tembea ${fwd} mbele, kisha sogea ${side} ${dir}, kisha endelea.` : `Sogea ${side} ${dir}, kisha endelea.`,
+    distance: swDistance,
+    trip: (d, steps, m) => `${d}, takriban hatua ${steps}, kama ${swDuration(m)}`,
+    routeTo: (p, sum) => `Njia ya kwenda ${p}: ${sum}.`,
+    halfway: (left, m) => `Umefika nusu ya safari. Zimebaki ${left}, kama ${swDuration(m)}.`,
+    almost: (s) => `Umekaribia kufika. Zimebaki ${s}.`,
+    arrived: (p) => `Umefika ${p}.`,
+    walk: (s) => `Tembea ${s}`,
+    walkAbout: (s) => `Tembea takriban ${s}`,
+    youArrive: 'utafika',
+    uturn: 'geuka nyuma',
+    keepLeft: 'elekea kushoto kidogo',
+    keepRight: 'elekea kulia kidogo',
+    turnLeft: 'geuka kushoto',
+    turnRight: 'geuka kulia',
+    straightOn: 'endelea moja kwa moja',
+
+    remainingMsg: (p, left, m) => `Zimebaki ${left} hadi ${p}, kama ${swDuration(m)}.`,
+    askDest: 'Ungependa kwenda wapi?',
+    searching: 'Natafuta.',
+    found: (p, sum) => `Nimepata ${p}: ${sum}. Sema ndiyo kwenda huko, au hapana kughairi.`,
+    keepRoute: 'Sawa, hakuna mabadiliko.',
+    routeCleared: 'Uelekezaji umesimamishwa. Nitaendelea kukuonya kuhusu vizuizi.',
+    noRoute: 'Hakuna mahali palipowekwa. Sema badilisha mahali ili kuweka.',
+    noGps: 'Bado sijui uko wapi. Tafadhali subiri kidogo kisha ujaribu tena.',
+    noWalkRoute: 'Nimepata mahali, lakini sikupata njia ya kutembea.',
+    listening: 'Ninasikiliza…',
+    yesNo: 'Tafadhali sema ndiyo au hapana.',
+    noMic: 'Siwezi kutumia maikrofoni kwenye kivinjari hiki. Tafadhali tumia Chrome au Edge, na uruhusu maikrofoni.',
+    help: 'Unaweza kusema: badilisha mahali, umbali gani, rudia, kuna nini mbele, sitisha safari, au simama.',
   },
 }
 
@@ -116,5 +242,6 @@ export const OBJECTS: Record<string, ObjectInfo> = {
 
 export const objectName = (cls: string, lang: Lang): string => OBJECTS[cls][lang]
 
-/** "1 step" / "4 steps" in the current language */
-export const stepsText = (n: number, T: Strings): string => `${n} ${n === 1 ? T.step : T.steps}`
+/** "1 step" / "4 steps" in English, "hatua 4" in Kiswahili (noun first) */
+export const stepsText = (n: number, T: Strings): string =>
+  T.lang.startsWith('sw') ? `${T.steps} ${n}` : `${n} ${n === 1 ? T.step : T.steps}`

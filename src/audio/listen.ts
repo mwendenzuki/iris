@@ -8,7 +8,7 @@ interface Recognition {
   lang: string
   interimResults: boolean
   onresult: ((e: RecognitionResultEvent) => void) | null
-  onerror: (() => void) | null
+  onerror: ((e: { error?: string }) => void) | null
   onend: (() => void) | null
   start(): void
 }
@@ -19,10 +19,24 @@ const SR: RecognitionCtor | undefined = w.SpeechRecognition ?? w.webkitSpeechRec
 
 export const canListen = (): boolean => !!SR
 
+let lastError: string | null = null
+
+/**
+ * Why the last listen() returned null, when the browser said: e.g. "network"
+ * (Brave and some browsers have no speech service), "not-allowed" (mic blocked),
+ * "no-speech" (silence). Null for plain silence or success.
+ */
+export const listenError = (): string | null => lastError
+
+/** True when voice input can't work here at all (as opposed to "didn't catch that"). */
+export const micUnavailable = (): boolean =>
+  !SR || ['network', 'not-allowed', 'service-not-allowed', 'audio-capture', 'language-not-supported'].includes(lastError ?? '')
+
 /** Listen for one phrase. Resolves with the transcript, or null on silence/error/unsupported. */
 export function listen(lang: string): Promise<string | null> {
   return new Promise((resolve) => {
     if (!SR) return resolve(null)
+    lastError = null
     const r = new SR()
     let done = false
     r.lang = lang
@@ -31,7 +45,11 @@ export function listen(lang: string): Promise<string | null> {
       done = true
       resolve(e.results[0][0].transcript)
     }
-    r.onerror = r.onend = () => {
+    r.onerror = (e) => {
+      lastError = e?.error ?? 'error'
+      if (!done) resolve(null)
+    }
+    r.onend = () => {
       if (!done) resolve(null)
     }
     beep(660, 90)
