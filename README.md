@@ -2,8 +2,6 @@
 
 A mobile-first web app that helps visually impaired people walk safely. Iris uses the phone camera to spot obstacles and GPS to give spoken, step-by-step directions, all hands-free.
 
-> Built in 24 hours at [Hackathon name]. Iris is an assistive aid. It does not replace a white cane or guide dog.
-
 ## What it does
 
 - **Obstacle detection:** the rear camera runs an on-device model and warns you about things in your path, with direction ("obstacle ahead, left").
@@ -66,8 +64,4 @@ Camera and GPS only work over HTTPS (localhost is fine for desktop). To test on 
 
 ## Team
 
-[Add names here]
-
-## License
-
-[Add license here]
+Abby, Ruth & Mary
