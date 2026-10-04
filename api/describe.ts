@@ -111,7 +111,11 @@ async function callGemini(apiKey: string, model: string, req: DescribeRequest): 
   })
 }
 
-export async function describe(body: unknown, apiKey: string | undefined, model = DEFAULT_MODEL): Promise<Reply> {
+/** Hosting dashboards make it easy to paste a key with quotes, spaces or a line break: clean that up. */
+const cleanKey = (k: string | undefined): string => (k ?? '').trim().replace(/^['"]+|['"]+$/g, '').trim()
+
+export async function describe(body: unknown, rawKey: string | undefined, model = DEFAULT_MODEL): Promise<Reply> {
+  const apiKey = cleanKey(rawKey)
   if (!apiKey) return { status: 503, body: { error: 'no_key' } }
   if (!isRequest(body)) return { status: 400, body: { error: 'bad_request' } }
 
@@ -137,8 +141,10 @@ export async function describe(body: unknown, apiKey: string | undefined, model 
     } catch {
       /* not JSON */
     }
-    console.warn(`[Iris] Gemini refused (${res.status}, model ${model}): ${message || detail.slice(0, 200)}`)
-    return { status: 502, body: { error: 'gemini_error', status: res.status, message, detail: detail.slice(0, 500) } }
+    // Key length (never the key) helps compare the copy on the host with the one in .env
+    const keyNote = /api key/i.test(message) ? ` (server key: ${apiKey.length} chars)` : ''
+    console.warn(`[Iris] Gemini refused (${res.status}, model ${model}): ${message || detail.slice(0, 200)}${keyNote}`)
+    return { status: 502, body: { error: 'gemini_error', status: res.status, message: message + keyNote, detail: detail.slice(0, 500) } }
   }
   const data = (await res.json()) as GeminiResponse
   const cand = data.candidates?.[0]
