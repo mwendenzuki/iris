@@ -89,12 +89,13 @@ function parseJson(text: string): unknown {
   }
 }
 
-/** Models that answered 400 to thinkingConfig (per server instance). */
-const noThinkingRejected = new Set<string>()
+/** Give up on Google after this long, so the app gets a clear answer instead of hanging. */
+const GOOGLE_TIMEOUT_MS = 15000
 
-async function callGemini(apiKey: string, model: string, req: DescribeRequest, noThinking: boolean): Promise<Response> {
+async function callGemini(apiKey: string, model: string, req: DescribeRequest): Promise<Response> {
   return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST',
+    signal: AbortSignal.timeout(GOOGLE_TIMEOUT_MS),
     headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: req.image } }, { text: prompt(req) }] }],
@@ -105,8 +106,6 @@ async function callGemini(apiKey: string, model: string, req: DescribeRequest, n
         maxOutputTokens: 2048,
         responseMimeType: 'application/json',
         responseSchema: RESPONSE_SCHEMA,
-        // Thinking adds seconds we can't afford while someone is walking; turn it off where supported.
-        ...(noThinking ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
       },
     }),
   })
@@ -116,15 +115,18 @@ export async function describe(body: unknown, apiKey: string | undefined, model 
   if (!apiKey) return { status: 503, body: { error: 'no_key' } }
   if (!isRequest(body)) return { status: 400, body: { error: 'bad_request' } }
 
-  // Try with thinking switched off (faster). Models that reject that setting answer 400:
-  // retry without it, and remember so later calls skip straight to what works.
-  const tryNoThinking = !noThinkingRejected.has(model)
-  let res = await callGemini(apiKey, model, body, tryNoThinking)
-  if (res.status === 400 && tryNoThinking) {
-    const retry = await callGemini(apiKey, model, body, false)
-    if (retry.ok) noThinkingRejected.add(model)
-    res = retry.ok || retry.status !== 400 ? retry : res
+  const started = Date.now()
+  const secs = () => ((Date.now() - started) / 1000).toFixed(1)
+
+  let res: Response
+  try {
+    res = await callGemini(apiKey, model, body)
+  } catch (e) {
+    const timedOut = e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')
+    console.warn(`[Iris] Gemini ${timedOut ? 'timed out' : 'unreachable'} after ${secs()}s (model ${model}): ${String(e)}`)
+    return { status: 504, body: { error: timedOut ? 'google_timeout' : 'google_unreachable', detail: String(e).slice(0, 200) } }
   }
+  console.info(`[Iris] Gemini answered ${res.status} in ${secs()}s (${body.mode}, model ${model})`)
 
   if (!res.ok) {
     const detail = await res.text().catch(() => '')

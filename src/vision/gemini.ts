@@ -34,7 +34,7 @@ export class GeminiEyes {
   recent: { hazards: GeminiHazard[]; t: number } | null = null
   private canvas = document.createElement('canvas')
 
-  async ask(video: HTMLVideoElement, mode: GeminiMode, lang: Lang, stride: number, timeoutMs = 7000): Promise<GeminiResult | null> {
+  async ask(video: HTMLVideoElement, mode: GeminiMode, lang: Lang, stride: number, timeoutMs = 18000): Promise<GeminiResult | null> {
     if (!this.available || !video.videoWidth) return null
     const image = this.grab(video)
     const ctrl = new AbortController()
@@ -67,8 +67,10 @@ export class GeminiEyes {
       }
       this.recent = { hazards: out.hazards, t: performance.now() / 1000 }
       return out
-    } catch {
-      this.lastError = 'timeout/offline'
+    } catch (e) {
+      // AbortError = our timer fired (server too slow); anything else = no connection to the server
+      this.lastError = e instanceof DOMException && e.name === 'AbortError' ? `timeout (no answer in ${timeoutMs / 1000}s)` : 'offline'
+      console.warn('[Iris] Gemini request failed:', this.lastError, e)
       return null // the on-device pipeline carries on
     } finally {
       clearTimeout(timer)

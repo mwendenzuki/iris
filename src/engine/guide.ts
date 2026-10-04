@@ -400,7 +400,7 @@ export class Guide {
   private askHazards(onResult: (hazards: GeminiHazard[]) => void): void {
     const g = this.gemini
     g.busy = true
-    g.ask(this.video!, 'hazards', this.settings.lang, this.stride, 6000)
+    g.ask(this.video!, 'hazards', this.settings.lang, this.stride, 18000)
       .then((r) => {
         if (r && this.running && !this.dialog) onResult(r.hazards)
       })
