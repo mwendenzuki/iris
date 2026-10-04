@@ -128,7 +128,15 @@ export async function describe(body: unknown, apiKey: string | undefined, model 
 
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
-    return { status: 502, body: { error: 'gemini_error', status: res.status, detail: detail.slice(0, 500) } }
+    // Google's own explanation, e.g. "API key not valid. Please pass a valid API key."
+    let message = ''
+    try {
+      message = (JSON.parse(detail) as { error?: { message?: string } }).error?.message ?? ''
+    } catch {
+      /* not JSON */
+    }
+    console.warn(`[Iris] Gemini refused (${res.status}, model ${model}): ${message || detail.slice(0, 200)}`)
+    return { status: 502, body: { error: 'gemini_error', status: res.status, message, detail: detail.slice(0, 500) } }
   }
   const data = (await res.json()) as GeminiResponse
   const cand = data.candidates?.[0]
