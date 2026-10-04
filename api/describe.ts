@@ -71,39 +71,76 @@ function isRequest(b: unknown): b is DescribeRequest {
   )
 }
 
+interface GeminiResponse {
+  candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] }; finishReason?: string }[]
+  promptFeedback?: { blockReason?: string }
+}
+
+/** Pull the JSON object out of the model's text, tolerating ```json fences or stray prose. */
+function parseJson(text: string): unknown {
+  const t = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '')
+  try {
+    return JSON.parse(t)
+  } catch {
+    const a = t.indexOf('{')
+    const b = t.lastIndexOf('}')
+    if (a >= 0 && b > a) return JSON.parse(t.slice(a, b + 1))
+    throw new Error('no JSON in reply')
+  }
+}
+
+/** Models that answered 400 to thinkingConfig (per server instance). */
+const noThinkingRejected = new Set<string>()
+
+async function callGemini(apiKey: string, model: string, req: DescribeRequest, noThinking: boolean): Promise<Response> {
+  return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: req.image } }, { text: prompt(req) }] }],
+      generationConfig: {
+        temperature: 0.2,
+        // Newer Gemini models "think" before answering and that counts against this limit,
+        // so leave plenty of room or the answer comes back empty/cut off.
+        maxOutputTokens: 2048,
+        responseMimeType: 'application/json',
+        responseSchema: RESPONSE_SCHEMA,
+        // Thinking adds seconds we can't afford while someone is walking; turn it off where supported.
+        ...(noThinking ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+      },
+    }),
+  })
+}
+
 export async function describe(body: unknown, apiKey: string | undefined, model = DEFAULT_MODEL): Promise<Reply> {
   if (!apiKey) return { status: 503, body: { error: 'no_key' } }
   if (!isRequest(body)) return { status: 400, body: { error: 'bad_request' } }
 
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
-    body: JSON.stringify({
-      contents: [
-        {
-          role: 'user',
-          parts: [{ inline_data: { mime_type: 'image/jpeg', data: body.image } }, { text: prompt(body) }],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.2,
-        maxOutputTokens: 400,
-        responseMimeType: 'application/json',
-        responseSchema: RESPONSE_SCHEMA,
-      },
-    }),
-  })
+  // Try with thinking switched off (faster). Models that reject that setting answer 400:
+  // retry without it, and remember so later calls skip straight to what works.
+  const tryNoThinking = !noThinkingRejected.has(model)
+  let res = await callGemini(apiKey, model, body, tryNoThinking)
+  if (res.status === 400 && tryNoThinking) {
+    const retry = await callGemini(apiKey, model, body, false)
+    if (retry.ok) noThinkingRejected.add(model)
+    res = retry.ok || retry.status !== 400 ? retry : res
+  }
 
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
     return { status: 502, body: { error: 'gemini_error', status: res.status, detail: detail.slice(0, 500) } }
   }
-  const data = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
-  const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? ''
+  const data = (await res.json()) as GeminiResponse
+  const cand = data.candidates?.[0]
+  const text = cand?.content?.parts?.filter((p) => !p.thought).map((p) => p.text ?? '').join('') ?? ''
+  if (!text) {
+    const why = data.promptFeedback?.blockReason ?? cand?.finishReason ?? 'empty'
+    return { status: 502, body: { error: 'empty_reply', reason: why } }
+  }
   try {
-    return { status: 200, body: JSON.parse(text) }
+    return { status: 200, body: parseJson(text) }
   } catch {
-    return { status: 502, body: { error: 'bad_json', detail: text.slice(0, 500) } }
+    return { status: 502, body: { error: 'bad_json', reason: cand?.finishReason ?? '', detail: text.slice(0, 300) } }
   }
 }
 

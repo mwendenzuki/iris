@@ -51,8 +51,9 @@ export class GeminiEyes {
       if (res.status === 503) return this.off('no API key on the server')
       if (!res.ok) {
         // Gemini itself refused (bad key, quota, model name...): stay on, report it
-        const body = (await res.json().catch(() => ({}))) as { status?: number; error?: string }
-        this.lastError = String(body.status ?? res.status)
+        const body = (await res.json().catch(() => ({}))) as { status?: number; error?: string; reason?: string }
+        // e.g. "403" (Google refused), "empty_reply MAX_TOKENS", "bad_json", or the raw HTTP code
+        this.lastError = body.status ? String(body.status) : [body.error, body.reason].filter(Boolean).join(' ') || String(res.status)
         console.warn('[Iris] Gemini error', res.status, body)
         return null
       }
