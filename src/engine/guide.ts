@@ -321,7 +321,7 @@ export class Guide {
         `${items.length} object(s) · stride ${(this.stride * 100) | 0} cm · depth ${this.depth.status}` +
         (this.heading == null ? ' · no compass' : '') +
         (this.pitch == null ? ' · no tilt' : ` · tilt ${Math.round(this.pitch)}°`) +
-        ` · gemini ${this.gemini.available ? 'on' : 'off'}`
+        ` · gemini ${this.gemini.status}`
       this.cb.onStatus(this.depth.failed ? 'Depth model unavailable: using size-based distance · ' + status : status)
     } catch {
       /* skip frame */

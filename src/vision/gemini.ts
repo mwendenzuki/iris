@@ -24,6 +24,10 @@ const FRAME_WIDTH = 512
 export class GeminiEyes {
   /** false once we learn Gemini isn't set up, so we stop trying */
   available = true
+  /** why it was switched off (shown in the status line) */
+  offReason = ''
+  /** last failure while still on, e.g. "403" or "timeout" (cleared on success) */
+  lastError = ''
   /** a background (hazard) request is in flight */
   busy = false
   /** latest hazard list from Gemini, with the time (s) it arrived */
@@ -42,12 +46,17 @@ export class GeminiEyes {
         body: JSON.stringify({ image, mode, lang, stride }),
         signal: ctrl.signal,
       })
-      // 404: no API route (static host); 503: no key configured; 405: wrong server
-      if (res.status === 404 || res.status === 503 || res.status === 405) {
-        this.available = false
+      // 404/405: this server has no /api/describe (e.g. `npm run preview`); 503: no key configured
+      if (res.status === 404 || res.status === 405) return this.off('no API on this server')
+      if (res.status === 503) return this.off('no API key on the server')
+      if (!res.ok) {
+        // Gemini itself refused (bad key, quota, model name...): stay on, report it
+        const body = (await res.json().catch(() => ({}))) as { status?: number; error?: string }
+        this.lastError = String(body.status ?? res.status)
+        console.warn('[Iris] Gemini error', res.status, body)
         return null
       }
-      if (!res.ok) return null
+      this.lastError = ''
       const r = (await res.json()) as Partial<GeminiResult>
       const out: GeminiResult = {
         summary: typeof r.summary === 'string' ? r.summary : '',
@@ -56,10 +65,24 @@ export class GeminiEyes {
       this.recent = { hazards: out.hazards, t: performance.now() / 1000 }
       return out
     } catch {
-      return null // timeout or offline: the on-device pipeline carries on
+      this.lastError = 'timeout/offline'
+      return null // the on-device pipeline carries on
     } finally {
       clearTimeout(timer)
     }
+  }
+
+  /** Short status for the screen: "on", "error 403", "off: no API key on the server". */
+  get status(): string {
+    if (!this.available) return `off: ${this.offReason}`
+    return this.lastError ? `error ${this.lastError}` : 'on'
+  }
+
+  private off(reason: string): null {
+    this.available = false
+    this.offReason = reason
+    console.warn('[Iris] Gemini switched off:', reason)
+    return null
   }
 
   /** Current frame as base64 JPEG, downscaled to keep uploads small on mobile data. */

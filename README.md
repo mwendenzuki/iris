@@ -67,15 +67,28 @@ On-device models handle urgent alerts (fast, offline). Gemini adds understanding
 - **Background hazard check** every 8 s looks for things COCO can't name (potholes, open drains, kerbs, steps, poles, low branches) and speaks them as warnings, never as "Stop".
 - If Gemini isn't configured, is slow (>6–7 s) or offline, Iris carries on exactly as before.
 
-The API key never reaches the phone: the app posts frames to `/api/describe`, a Vercel function that calls Gemini.
+The API key never reaches the phone: the app posts frames to `/api/describe`, a small server function that calls Gemini
+(`api/describe.ts` on Vercel, `netlify/functions/describe.mts` on Netlify, built into `npm run dev` locally).
 
 Setup:
 1. Get a key at https://aistudio.google.com/apikey
-2. Locally: copy `.env.example` to `.env` and set `GEMINI_API_KEY`. `npm run dev` serves `/api/describe` itself.
-3. On Vercel: add `GEMINI_API_KEY` under Project → Settings → Environment Variables, then redeploy.
+2. Locally: copy `.env.example` to `.env` and set `GEMINI_API_KEY`, then restart `npm run dev`.
+3. Netlify: Site configuration → Environment variables → add `GEMINI_API_KEY`, then redeploy.
+   Vercel: Project → Settings → Environment Variables → add `GEMINI_API_KEY`, then redeploy.
 4. Optional: `GEMINI_MODEL` to pin a model (default: `gemini-flash-latest`).
 
-The status line on the walking screen shows `gemini on/off`. Camera frames are sent to Google while Gemini is on.
+The status line on the walking screen shows the Gemini state:
+
+| Status | Meaning |
+|---|---|
+| `gemini on` | working |
+| `gemini off: no API on this server` | no `/api/describe` here, e.g. `npm run preview` (use `npm run dev`, Netlify or Vercel) |
+| `gemini off: no API key on the server` | `GEMINI_API_KEY` missing: check `.env` / host env vars, restart or redeploy |
+| `gemini error 400/403` | Google rejected the request: check the key (AI Studio keys start with `AIza`) and the model name |
+| `gemini error 429` | free-tier rate limit hit: raise `GEMINI_INTERVAL` in `engine/guide.ts` |
+| `gemini error timeout/offline` | slow or no connection; Iris keeps working without it |
+
+Camera frames are sent to Google while Gemini is on.
 
 ## Tech stack
 
